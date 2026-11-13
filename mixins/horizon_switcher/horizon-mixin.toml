@@ -1,0 +1,114 @@
+# Horizon Switcher: offline accounts for Horizon, an in-game account switcher
+# in the spirit of Java's In-Game Account Switcher.
+#
+# The game must still be started by the Horizon launcher with a Microsoft
+# account that owns Minecraft: Java Edition; offline accounts only work while
+# that session is there.
+
+[mod]
+id = "horizon_switcher"
+version = "0.1.0"
+priority = 100
+
+# Horizon Nightly 2026-11-08 (tag nightly-source/2026-11-08-fdc87ae). Installing
+# from GitHub needs a pin; `player_name` and `auth::current` have no named hook,
+# so they are hooked by path and checked against this commit.
+[compatibility]
+horizon_revision = "fdc87aecdbd116bf1e08adcd062fcbaea8c2e2ca"
+
+# The state, the overlay and the account file, inside the crate that owns the
+# Microsoft session (`auth::CURRENT`); public so the client's hooks reach it.
+[[module]]
+id = "runtime"
+file = "crates/horizon-client-render/src/auth.rs"
+name = "account_switcher"
+source = "switcher.rs"
+visibility = "pub"
+
+# No Microsoft session while an offline account plays.
+[[injection]]
+id = "current"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client_render::auth::current"
+helper = "hook_current.rs"
+bindings = []
+
+# The offline name everywhere the game names its player.
+[[injection]]
+id = "player-name"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::Options::player_name"
+helper = "hook_player_name.rs"
+bindings = [{ name = "options", ty = "&Options", value = "self" }]
+
+# The row in Options > Mods.
+[[injection]]
+id = "listed"
+hook = "mods"
+hook_version = 1
+kind = "HEAD"
+helper = "hook_listed.rs"
+bindings = [{ name = "mods", ty = "&mut Vec<NativeMod>", value = "&mut *mods" }]
+
+# The account button and the overlay on the title and multiplayer screens.
+[[injection]]
+id = "render"
+hook = "screen_render_post"
+hook_version = 1
+kind = "HEAD"
+helper = "hook_render.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
+  { name = "batch", ty = "&mut HudBatch", value = "&mut *batch" },
+  { name = "screen", ty = "&NativeScreenView<'_>", value = "screen" },
+]
+
+[[injection]]
+id = "press"
+hook = "screen_mouse_button_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "hook_press.rs"
+bindings = [
+  { name = "screen", ty = "&NativeScreenView<'_>", value = "screen" },
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "release"
+hook = "screen_mouse_button_released_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "hook_release.rs"
+bindings = [
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "scroll"
+hook = "screen_mouse_scrolled_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "hook_scroll.rs"
+bindings = [
+  { name = "screen", ty = "&NativeScreenView<'_>", value = "screen" },
+  { name = "scroll", ty = "[f64; 2]", value = "scroll" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "key"
+hook = "screen_key_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "hook_key.rs"
+bindings = [
+  { name = "screen", ty = "&NativeScreenView<'_>", value = "screen" },
+  { name = "key", ty = "&str", value = "key" },
+  { name = "modifiers", ty = "u32", value = "modifiers" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]

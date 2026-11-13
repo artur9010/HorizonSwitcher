@@ -1,0 +1,32 @@
+# Unit tests, lints, and the mod applied to its pinned Horizon with the real horizon-mixins.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests
+        run: cargo test --locked
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: target/verify/horizon-mixins/target
+          key: mixins-${{ hashFiles('compatibility.json') }}
+      - name: Apply to the pinned Horizon (plan + apply)
+        run: tools/verify.sh

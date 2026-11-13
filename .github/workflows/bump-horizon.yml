@@ -1,0 +1,104 @@
+# Daily: moves the pin to the newest Horizon Nightly. When the mod applies and compiles there, the
+# new pin goes straight to master with the next patch version, its tag, and a release (release.yml).
+# A hook or function that is gone, or a failed build, changes nothing and opens an issue.
+name: Bump Horizon
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "A Horizon commit instead of the newest Nightly (optional)"
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: bump-horizon
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      tag: ${{ steps.push.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Find the Nightly and update the pins
+        id: bump
+        run: |
+          git init -q "$RUNNER_TEMP/horizon"
+          git -C "$RUNNER_TEMP/horizon" remote add origin https://github.com/horizon-rust/horizon.git
+          if [ -n "${{ inputs.revision }}" ]; then which="--revision ${{ inputs.revision }}"; else which="--latest"; fi
+          set +e
+          python3 tools/bump_horizon.py --horizon "$RUNNER_TEMP/horizon" $which > report.json
+          status=$?
+          set -e
+          cat report.json
+          {
+            echo "changed=$(python3 -c 'import json; print(str(json.load(open("report.json")).get("changed", False)).lower())')"
+            echo "new=$(python3 -c 'import json; print(json.load(open("report.json"))["new"])')"
+            echo "tag=$(python3 -c 'import json; print(json.load(open("report.json"))["tag"] or "")')"
+          } >> "$GITHUB_OUTPUT"
+          exit $status
+
+      - name: System libraries for the game
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev \
+            libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libfontconfig-dev libvulkan-dev pkg-config
+
+      - name: Apply and compile on the new Horizon
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          cargo test --locked
+          tools/verify.sh --compile
+
+      - name: Commit to master and tag
+        id: push
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          version=$(python3 tools/bump_version.py)
+          cargo test --locked -q   # Cargo.lock follows the new version
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mixins/horizon_switcher compatibility.json Cargo.toml Cargo.lock
+          git commit -q -m "Pin Horizon ${{ steps.bump.outputs.tag || steps.bump.outputs.new }}, v$version" \
+            -m "$(cat report.json)"
+          # master may have moved while the game compiled: put the bump on top (the pin files are
+          # only ever changed by this workflow, so this doesn't conflict in practice).
+          git pull -q --rebase origin master
+          git tag "v$version"
+          git push origin HEAD:master "v$version"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Report a mod that no longer fits
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Horizon Switcher doesn't fit the newest Horizon"
+          body=$(printf 'The [bump run](%s/%s/actions/runs/%s) failed; master is unchanged.\n\n```json\n%s\n```\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$(cat report.json 2>/dev/null || echo '{}')")
+          existing=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body"
+          else gh issue create --title "$title" --body "$body"; fi
+
+  # A tag pushed with the workflow's token starts no workflow, so the release is called from here.
+  release:
+    needs: bump
+    if: needs.bump.outputs.tag != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.bump.outputs.tag }}
+      verified: true
+    permissions:
+      contents: write

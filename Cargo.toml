@@ -1,0 +1,14 @@
+# Standalone build of the mod's runtime for its unit tests. The game itself is
+# built by the Horizon launcher (`horizon-launcher native-build`), not by this.
+[package]
+name = "horizon-switcher"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "shim/lib.rs"
+
+[dependencies]
+serde_json = "1"
+log = "0.4"
