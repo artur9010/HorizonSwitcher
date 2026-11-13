@@ -38,8 +38,23 @@ checkout "$WORK/horizon-mixins" "$MIXINS_REPO" "$MIXINS_REV"
 cargo build -q --locked --manifest-path "$WORK/horizon-mixins/Cargo.toml" -p horizon-mixins-cli
 MX=$WORK/horizon-mixins/target/debug/horizon-mixins
 
-"$MX" plan --workspace "$WORK/horizon" --mods "$ROOT/mixins" --out "$WORK/plan.json"
-"$MX" apply --workspace "$WORK/horizon" --mods "$ROOT/mixins" --out "$WORK/modded"
+# horizon-mixins takes no symlinks (Horizon commits CLAUDE.md as one), so it gets an export of the
+# commit with each link replaced by a copy, and the `.horizon-revision` stamp that stands for git
+# there (as horizon-native-mod-template and the launcher do).
+SOURCE=$WORK/source-$HORIZON_REV
+if [[ ! -f $SOURCE/.horizon-revision ]]; then
+  rm -rf "$SOURCE" "$SOURCE.tmp"
+  mkdir -p "$SOURCE.tmp"
+  git -C "$WORK/horizon" archive --format=tar "$HORIZON_REV" | tar -x -C "$SOURCE.tmp"
+  find "$SOURCE.tmp" -type l | while read -r link; do
+    cp --remove-destination "$(readlink -f "$link")" "$link"
+  done
+  echo "$HORIZON_REV" > "$SOURCE.tmp/.horizon-revision"
+  mv "$SOURCE.tmp" "$SOURCE"
+fi
+
+"$MX" plan --workspace "$SOURCE" --mods "$ROOT/mixins" --out "$WORK/plan.json"
+"$MX" apply --workspace "$SOURCE" --mods "$ROOT/mixins" --out "$WORK/modded"
 
 if (( COMPILE )); then
   cargo fetch --locked --manifest-path "$WORK/modded/Cargo.toml"
