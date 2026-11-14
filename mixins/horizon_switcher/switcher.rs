@@ -30,7 +30,7 @@ pub const MAX_NAME: usize = 16;
 /// Options > Mods' row.
 pub const ID: &str = "horizon_switcher";
 pub const NAME: &str = "Horizon Switcher";
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.1.1";
 pub const DESCRIPTION: &str = "Offline accounts beside your Microsoft account: the Account button on the title and multiplayer screens.";
 
 // ---------------------------------------------------------------------------

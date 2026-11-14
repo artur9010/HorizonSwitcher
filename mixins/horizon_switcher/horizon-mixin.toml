@@ -7,14 +7,14 @@
 
 [mod]
 id = "horizon_switcher"
-version = "0.1.0"
+version = "0.1.1"
 priority = 100
 
-# Horizon Nightly 2026-11-08 (tag nightly-source/2026-11-08-fdc87ae). Installing
+# Horizon Nightly 2026-11-13 (tag nightly-source/2026-11-13-9f42064). Installing
 # from GitHub needs a pin; `player_name` and `auth::current` have no named hook,
 # so they are hooked by path and checked against this commit.
 [compatibility]
-horizon_revision = "fdc87aecdbd116bf1e08adcd062fcbaea8c2e2ca"
+horizon_revision = "9f42064c11efe7ef3e5ed2baad7ddc2a3b36eea0"
 
 # The state, the overlay and the account file, inside the crate that owns the
 # Microsoft session (`auth::CURRENT`); public so the client's hooks reach it.
@@ -39,7 +39,7 @@ bindings = []
 id = "player-name"
 kind = "HEAD"
 cancellable = true
-target = "horizon_client::game::Options::player_name"
+target = "horizon_client::game::launch_options::Options::player_name"
 helper = "hook_player_name.rs"
 bindings = [{ name = "options", ty = "&Options", value = "self" }]
 
