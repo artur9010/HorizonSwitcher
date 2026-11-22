@@ -30,6 +30,9 @@ MOD = ROOT / 'horizon_switcher'
 MANIFEST = MOD / 'horizon-mod.toml'
 REPO = 'horizon-rust/horizon'
 GAME_CRATE = 'horizon_client'
+# The kinds that rewrite one selected place in the body (horizon-mixins' `selects_site`).
+SITE_KINDS = {'BEFORE_CALL', 'AFTER_CALL', 'AFTER_ASSIGN', 'MODIFY_ARG', 'MODIFY_ARGS', 'MODIFY_CONSTANT',
+              'MODIFY_VARIABLE', 'MODIFY_EXPRESSION_VALUE', 'WRAP_OPERATION'}
 
 
 def fetch(url):
@@ -156,7 +159,7 @@ def check(sdk, mod, signatures=None):
             problems.append(f"{rid}: {row['target']}'s signature changed: check the bindings")
         if 'selector' in row:
             found = sdk.body(key).count(row['selector'])
-            if found != row.get('require', 1):
+            if found != row.get('require', 1) or row.get('ordinal', 0) >= found:
                 problems.append(f"{rid}: `{row['selector']}` is in {now} {found} times, the row requires "
                                 f"{row.get('require', 1)}")
         helper = MOD / row['helper']
@@ -188,4 +191,16 @@ def static_problems(mod):
             problems.append(f"{row['id']}: a mixin names a target, not a hook")
         if not (row.get('helper', '').startswith('src/') and row['helper'].endswith('.rs')):
             problems.append(f"{row['id']}: the helper must be a .rs file under src/")
+        # horizon-mixins' own rules (manifest.rs): a kind that selects a site needs a selector
+        # (MODIFY_VARIABLE: a variable), a zero-based ordinal and a positive require; the others
+        # take none of them.
+        kind = row.get('kind')
+        if kind in SITE_KINDS:
+            if (kind != 'MODIFY_VARIABLE' and 'selector' not in row) or not isinstance(row.get('ordinal'), int) \
+                    or not (isinstance(row.get('require'), int) and row['require'] > 0):
+                problems.append(f"{row['id']}: {kind} needs selector, ordinal (from 0) and require")
+        elif any(k in row for k in ('selector', 'ordinal', 'require')):
+            problems.append(f"{row['id']}: selector/ordinal/require apply only to site kinds, not {kind}")
+        if row.get('cancellable') and kind not in ('HEAD', 'BEFORE_CALL', 'AFTER_CALL', 'AFTER_ASSIGN'):
+            problems.append(f"{row['id']}: cancellable needs HEAD, BEFORE_CALL, AFTER_CALL or AFTER_ASSIGN")
     return problems
