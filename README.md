@@ -21,7 +21,7 @@ session to the game. Offline accounts work **only while that session is there**.
 the list is shown greyed out with "Start Horizon from the launcher with a Microsoft account". The mod adds offline
 names; it does not get around buying the game.
 
-Offline names only get into **offline-mode** servers (and single player). Online-mode servers refuse them, as
+Offline names only get into **offline-mode** servers. Single player still plays as the Microsoft account. Online-mode servers refuse them, as
 they do on Java.
 
 ## Install
@@ -67,16 +67,17 @@ which the launcher copies out of the pinned source, patches and installs over th
 |---|---|---|
 | `[[native.module]] account_switcher` | `crates/horizon-client/src/game.rs` (`src/switcher.rs`) | State, account file, overlay layout/input, server-list add |
 | `join-session` (HEAD, cancellable) | `game::remote::polling::Game::auth_body` | No Microsoft session for server joins and chat signing while an offline account plays (splitscreen guests keep theirs) |
-| `world-session` (MODIFY_EXPRESSION_VALUE) | `auth::current()` in `game::integrated::Game::open_integrated` | Single-player worlds play as the offline name |
 | `player-name` (HEAD, cancellable) | `game::launch_options::Options::player_name` | The offline name wherever the game names its player (splitscreen guests untouched) |
 | `render`, `press`, `release`, `scroll`, `key` (HEAD) | `game::native_hooks::base::Game::native_screen_*` | Draw the button and overlay on the title and multiplayer screens, take its clicks, wheel and typing |
 
 The row in Options → Mods comes from `horizon-mod.toml` itself.
 
 `horizon_client_render::auth::current()` lives below the game crate and can't take a mixin, so the mod patches the
-callers that matter instead. Callers in `horizon_client_lib` can't be patched either: hosting a LAN world, Realms
-and the title's account status still see the Microsoft session while an offline name plays, and so does the
-cosmetics service.
+callers that matter instead: server joins. Single player isn't one of them: the function that opens a world
+(`open_integrated`) has a `#[cfg(test)]` in its body, which horizon-mixins refuses for every kind of mixin, so
+single-player worlds play as the Microsoft account. Callers in `horizon_client_lib` can't be patched either:
+hosting a LAN world, Realms and the title's account status still see the Microsoft session while an offline name
+plays, and so does the cosmetics service.
 
 `switcher.rs` is pure Rust except for `horizon_client_render::{auth, logging}` and `horizon_protocol::servers`,
 which `shim/` stands in for, so its logic has unit tests without the game:

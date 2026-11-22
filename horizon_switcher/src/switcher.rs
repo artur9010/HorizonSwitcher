@@ -515,8 +515,8 @@ fn save(state: &mut State) {
     }
 }
 
-/// For the session helpers: true hides the Microsoft session, so server joins
-/// and single-player worlds play offline.
+/// For the session helper: true hides the Microsoft session, so server joins
+/// play offline.
 pub fn offline_active() -> bool {
     // The saved choice applies from the first call (a `--server` join at start
     // asks before the title draws).

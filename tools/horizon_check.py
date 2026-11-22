@@ -8,7 +8,7 @@ The launcher builds a native mod against the prebuilt game of its pinned commit:
   * the commit has an SDK release (`sdk-<commit>`), and `[native] mixins` is the horizon-mixins
     revision it names (sdk.json);
   * every target is in the index and not refused (a function that only moved is found again by
-    its type and name);
+    its type and name), and has no cfg/cfg_attr in its body;
   * every `selector` matches the target's body `require` times;
   * the support module's destination file is a file of the game crate;
   * the helper files and module source exist, and each helper's parameter and return types are
@@ -214,6 +214,10 @@ def check(sdk, mod, signatures=None):
         old = (signatures or {}).get(row['target'])
         if old and old != hashes[now]:
             problems.append(f"{rid}: {row['target']}'s signature changed: check the bindings")
+        # horizon-mixins walks the whole target body for every kind and refuses any cfg/cfg_attr
+        # in it (E_UNSUPPORTED_CFG); the function index doesn't record that.
+        if re.search(r'#\s*\[\s*cfg(_attr)?\b', sdk.body(key)):
+            problems.append(f'{rid}: {now} has a cfg/cfg_attr in its body, which horizon-mixins refuses')
         if 'selector' in row:
             found = sdk.body(key).count(row['selector'])
             if found != row.get('require', 1) or row.get('ordinal', 0) >= found:
