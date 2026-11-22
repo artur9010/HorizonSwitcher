@@ -1,6 +1,6 @@
 id = "horizon_switcher"
 name = "Horizon Switcher"
-version = "0.2.1"
+version = "0.2.2"
 description = "Offline accounts beside your Microsoft account: the Account button on the title and multiplayer screens."
 authors = ["Artur Motyka"]
 homepage = "https://github.com/artur9010/HorizonSwitcher"
@@ -48,7 +48,7 @@ ordinal = 0
 require = 1
 helper = "src/mixins/world_session.rs"
 bindings = [
-  { name = "session", ty = "Option<::std::sync::Arc<horizon_client::auth::AuthSession>>", value = "$value" },
+  { name = "session", ty = "Option<std::sync::Arc<horizon_client::auth::AuthSession>>", value = "$value" },
 ]
 
 # The offline name everywhere the game names its player.

@@ -11,8 +11,8 @@ The launcher builds a native mod against the prebuilt game of its pinned commit:
     its type and name);
   * every `selector` matches the target's body `require` times;
   * the support module's destination file is a file of the game crate;
-  * the helper files and module source exist, and each helper takes as many parameters as its
-    row binds.
+  * the helper files and module source exist, and each helper's parameter and return types are
+    what horizon-mixins expects, compared as text the way it compares them.
 
 Nothing is compiled here: the launcher's build is the only full check.
 """
@@ -119,17 +119,74 @@ def locate(sdk, target):
     return None, None, f'{target}: several functions are {tail(key)} now: ' + ', '.join(found)
 
 
-def helper_params(text):
-    m = re.search(r'\bfn\s+\w+\s*\((.*?)\)\s*(->|\{)', text, re.S)
-    if not m:
-        return None
-    params = m.group(1).strip().rstrip(',')
-    depth, count = 0, (1 if params else 0)
-    for c in params:
+def split_top(text):
+    """`a: X<B, C>, d: E` -> ['a: X<B, C>', 'd: E']: commas outside brackets."""
+    parts, depth, start = [], 0, 0
+    for i, c in enumerate(text):
         depth += c in '<([{'
         depth -= c in '>)]}'
-        count += c == ',' and depth == 0
-    return count
+        if c == ',' and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return [p.strip() for p in parts if p.strip()]
+
+
+def signature(text):
+    """(parameter types, return type) of the first `fn` in `text`; `()` when it returns nothing."""
+    m = re.search(r'\bfn\s+\w+\s*\(', text)
+    if not m:
+        return None
+    depth, i = 1, m.end()
+    while depth:
+        depth += {'(': 1, ')': -1}.get(text[i], 0)
+        i += 1
+    params = [p.split(':', 1)[1] if ':' in p else p for p in split_top(text[m.end():i - 1])]
+    rest = text[i:text.index('{', i)]
+    ret = rest.split('where')[0].strip()
+    return params, (ret.removeprefix('->').strip() if ret.startswith('->') else '()')
+
+
+def same_type(a, b):
+    """horizon-mixins' own comparison (helpers::normalize_type): the text, without whitespace or
+    the `core::ops::`/`std::ops::` prefixes. `::std::sync::Arc` is not `std::sync::Arc` to it."""
+    def norm(ty):
+        ty = re.sub(r'\s+', '', ty)
+        for prefix in ('::core::ops::', '::std::ops::', 'core::ops::', 'std::ops::'):
+            ty = ty.replace(prefix, '')
+        return ty
+    return norm(a) == norm(b)
+
+
+def helper_problems(row, text, target_body):
+    """What horizon-mixins refuses in a helper before compiling it: parameters that are not the
+    bindings' types, or a return type that is not the row's contract."""
+    found = signature(text)
+    if not found:
+        return ['no `fn` in the helper']
+    params, ret = found
+    bindings = row.get('bindings', [])
+    if len(params) != len(bindings):
+        return [f'takes {len(params)} parameters, the row binds {len(bindings)}']
+    problems = [f"parameter {b['name']} is `{p}`, its binding says `{b['ty']}`"
+                for p, b in zip(params, bindings) if not same_type(p, b['ty'])]
+    target = signature(target_body)
+    target_ret = target[1] if target else None
+    kind = row.get('kind')
+    value = next((b['ty'] for b in bindings if b['value'] == '$value'), None)
+    if row.get('cancellable'):
+        expected = f'ControlFlow<{target_ret}>' if target_ret else None
+    elif kind in ('RETURN', 'OVERWRITE'):
+        expected = target_ret
+    elif value is not None:
+        expected = value
+    elif kind == 'HEAD':
+        expected = '()'
+    else:
+        expected = None
+    if expected and not same_type(ret, expected):
+        problems.append(f'returns `{ret}`, horizon-mixins wants `{expected}` (compared as text)')
+    return problems
 
 
 def check(sdk, mod, signatures=None):
@@ -166,10 +223,8 @@ def check(sdk, mod, signatures=None):
         if not helper.is_file():
             problems.append(f"{rid}: no {row['helper']}")
             continue
-        params = helper_params(helper.read_text())
-        if params != len(row.get('bindings', [])):
-            problems.append(f"{rid}: {row['helper']} takes {params} parameters, the row binds "
-                            f"{len(row.get('bindings', []))}")
+        problems += [f"{rid}: {row['helper']} {why}"
+                     for why in helper_problems(row, helper.read_text(), sdk.body(key))]
     return problems, moved, hashes
 
 
