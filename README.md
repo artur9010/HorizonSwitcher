@@ -60,7 +60,8 @@ The choice is saved and comes back the next time you start the game. Files:
 ## How it hooks in
 
 `horizon_switcher/` is a flat native mod project: `horizon-mod.toml`, `Cargo.toml` and `src/`. Its crate
-(`src/lib.rs`) subscribes to no hook; the work is done inside the game's own functions by `[[native.mixin]]` rows,
+(`src/lib.rs`) only subscribes to `screen_render_post`, with an empty handler: the game draws the screen hooks
+only while some mod listens to one. The work is done inside the game's own functions by `[[native.mixin]]` rows,
 which the launcher copies out of the pinned source, patches and installs over the prebuilt game:
 
 | Row | Where | What |

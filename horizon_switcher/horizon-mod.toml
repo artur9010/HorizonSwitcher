@@ -1,6 +1,6 @@
 id = "horizon_switcher"
 name = "Horizon Switcher"
-version = "0.2.3"
+version = "0.2.4"
 description = "Offline accounts beside your Microsoft account: the Account button on the title and multiplayer screens."
 authors = ["Artur Motyka"]
 homepage = "https://github.com/artur9010/HorizonSwitcher"
