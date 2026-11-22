@@ -1,49 +1,38 @@
 #!/usr/bin/env python3
-"""Packs the mod as a source-only `.hnmod` (Horizon's native mod file).
+"""Packs the mod as its `.hmod`, the source package the launcher builds.
 
-The archive holds `horizon-native.json` and `mixins/horizon_switcher/` (`.rs` and `.toml` only),
-with fixed dates and modes, so the same sources always give the same bytes and SHA-256.
-The launcher compiles it on the pinned Horizon revision.
+The archive is horizon_switcher/ flat, as the launcher packs a project (its "Add from GitHub" does
+the same from the source): `horizon-mod.toml` first, then `Cargo.toml`, `Cargo.lock` when there is
+one, and the `.rs` and `.toml` files under `src/`. Fixed dates and modes, so the same sources
+always give the same bytes and SHA-256.
 """
 import hashlib
 import json
-import re
 import tomllib
 import zipfile
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-GAME = '26.3'
+import horizon_check as hc
 
 
 def main():
-    compat = json.loads((ROOT / 'compatibility.json').read_text())
-    bundle = ROOT / 'mixins' / 'horizon_switcher'
-    mixin = tomllib.loads((bundle / 'horizon-mixin.toml').read_text())
-    mod = mixin['mod']
-    if bundle.name != mod['id']:
-        raise SystemExit(f"mixins/{bundle.name}/ must be named after the mod id {mod['id']}")
-    if mixin.get('compatibility', {}).get('horizon_revision') != compat['horizon_revision']:
-        raise SystemExit('horizon-mixin.toml and compatibility.json pin different Horizon revisions')
-    cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())['package']['version']
-    shown = re.search(r'pub const VERSION: &str = "([^"]+)";', (bundle / 'switcher.rs').read_text())
-    if not shown or not (shown.group(1) == mod['version'] == cargo):
-        raise SystemExit(f"versions differ: horizon-mixin.toml {mod['version']}, Cargo.toml {cargo}, "
-                         f"switcher.rs {shown and shown.group(1)}")
-    manifest = dict(schema=1, id=mod['id'], version=mod['version'], game=GAME,
-                    horizon=compat['horizon_revision'], mixins=compat['horizon_mixins_revision'])
-    files = {'horizon-native.json': (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode()}
-    for path in sorted(bundle.iterdir()):
-        if path.is_file() and path.suffix in ('.rs', '.toml'):
-            files[path.relative_to(ROOT).as_posix()] = path.read_bytes()
-    out = ROOT / 'target' / f"{mod['id']}-{mod['version']}.hnmod"
+    mod = hc.manifest()
+    problems = hc.static_problems(mod)
+    cargo = tomllib.loads((hc.MOD / 'Cargo.toml').read_text())['package']['version']
+    if cargo != mod['version']:
+        problems.append(f"versions differ: horizon-mod.toml {mod['version']}, Cargo.toml {cargo}")
+    if problems:
+        raise SystemExit('\n'.join(problems))
+    names = ['Cargo.toml'] + (['Cargo.lock'] if (hc.MOD / 'Cargo.lock').is_file() else [])
+    names += sorted(p.relative_to(hc.MOD).as_posix() for p in (hc.MOD / 'src').rglob('*')
+                    if p.is_file() and p.suffix in ('.rs', '.toml'))
+    out = hc.ROOT / 'target' / f"{mod['id']}-{mod['version']}.hmod"
     out.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out, 'w') as archive:
-        for name, content in sorted(files.items()):
+        for name in ['horizon-mod.toml', *names]:
             info = zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
-            archive.writestr(info, content)
+            archive.writestr(info, (hc.MOD / name).read_bytes())
     print(json.dumps(dict(file=str(out), size=out.stat().st_size,
                           sha256=hashlib.sha256(out.read_bytes()).hexdigest()), indent=2))
 

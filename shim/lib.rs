@@ -1,15 +1,28 @@
-// Stands in for the parts of Horizon the injected module uses, so
-// `cargo test` runs its tests without the game: `super::CURRENT` (auth.rs),
-// `crate::logging` and `horizon_protocol::servers`.
+// Stands in for the parts of Horizon the support module uses, so `cargo test` runs its tests
+// without the game: `horizon_client_render::{auth, logging}` and `horizon_protocol::servers`.
+// The crate answers to both names.
+extern crate self as horizon_client_render;
 extern crate self as horizon_protocol;
 
-pub mod auth;
+/// `horizon_client_render::auth`: no Microsoft session in the tests.
+pub mod auth {
+    use std::sync::Arc;
+    pub struct AuthSession {
+        pub name: String,
+    }
+    pub fn current() -> Option<Arc<AuthSession>> {
+        None
+    }
+}
 
 pub mod logging {
     pub fn player_dir_override() -> Option<&'static std::path::Path> {
         None
     }
 }
+
+#[path = "../horizon_switcher/src/switcher.rs"]
+pub mod account_switcher;
 
 /// A one-entry-per-line stand-in for servers.dat ("name\taddress").
 pub mod servers {
@@ -38,7 +51,7 @@ pub mod servers {
 
 #[cfg(test)]
 mod server_tests {
-    use crate::auth::account_switcher::add_default_server_once;
+    use crate::account_switcher::add_default_server_once;
 
     #[test]
     fn default_server_is_added_once() {

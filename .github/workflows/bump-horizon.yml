@@ -1,6 +1,7 @@
-# Daily: moves the pin to the newest Horizon Nightly. When the mod applies and compiles there, the
+# Daily: moves the pin to the newest Horizon Nightly that has an SDK release. When the mod fits it
+# (tools/bump_horizon.py: every target still patchable, unchanged signatures, selectors found), the
 # new pin goes straight to master with the next patch version, its tag, and a release (release.yml).
-# A hook or function that is gone, or a failed build, changes nothing and opens an issue.
+# A target that is gone or changed changes nothing and opens an issue.
 name: Bump Horizon
 
 on:
@@ -23,7 +24,7 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
     outputs:
       tag: ${{ steps.push.outputs.tag }}
     steps:
@@ -34,11 +35,9 @@ jobs:
       - name: Find the Nightly and update the pins
         id: bump
         run: |
-          git init -q "$RUNNER_TEMP/horizon"
-          git -C "$RUNNER_TEMP/horizon" remote add origin https://github.com/horizon-rust/horizon.git
           if [ -n "${{ inputs.revision }}" ]; then which="--revision ${{ inputs.revision }}"; else which="--latest"; fi
           set +e
-          python3 tools/bump_horizon.py --horizon "$RUNNER_TEMP/horizon" $which > report.json
+          python3 tools/bump_horizon.py $which > report.json
           status=$?
           set -e
           cat report.json
@@ -49,31 +48,23 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           exit $status
 
-      - name: System libraries for the game
-        if: steps.bump.outputs.changed == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev \
-            libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libfontconfig-dev libvulkan-dev pkg-config
-
-      - name: Apply and compile on the new Horizon
+      - name: Test on the new pin
         if: steps.bump.outputs.changed == 'true'
         run: |
           cargo test --locked
-          tools/verify.sh --compile
+          python3 tools/verify.py
 
       - name: Commit to master and tag
         id: push
         if: steps.bump.outputs.changed == 'true'
         run: |
           version=$(python3 tools/bump_version.py)
-          cargo test --locked -q   # Cargo.lock follows the new version
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mixins/horizon_switcher compatibility.json Cargo.toml Cargo.lock
+          git add horizon_switcher
           git commit -q -m "Pin Horizon ${{ steps.bump.outputs.tag || steps.bump.outputs.new }}, v$version" \
             -m "$(cat report.json)"
-          # master may have moved while the game compiled: put the bump on top (the pin files are
+          # master may have moved meanwhile: put the bump on top (the pin lines are
           # only ever changed by this workflow, so this doesn't conflict in practice).
           git pull -q --rebase origin master
           git tag "v$version"

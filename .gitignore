@@ -1,2 +1,4 @@
 /target
 __pycache__/
+/horizon_switcher/.horizon/
+/horizon_switcher/target/

@@ -1,17 +1,17 @@
 // Horizon Switcher: offline accounts beside the launcher's Microsoft account.
 //
-// This file is injected as `pub mod account_switcher` at the top level of
-// `crates/horizon-client-render/src/auth.rs` (see horizon-mixin.toml), so
-// `super::CURRENT` is the session the launcher handed the game. It also
-// builds as a standalone library (`tests/shim.rs`) for the unit tests.
+// The launcher puts this file into the game as `crate::game::account_switcher`, a
+// `[[native.module]]` of horizon-mod.toml, where the mixin helpers in `mixins/` call it. It reads
+// the game through `horizon_client_render` (the Microsoft session, the game folder) and
+// `horizon_protocol` (servers.dat), which `shim/` stands in for so it also builds as a standalone
+// library for the unit tests.
 //
-// The rule: offline accounts can only be used while the game was started with
-// a Microsoft session (the launcher only hands one over for an account that
-// owns Minecraft: Java Edition). Without that session the mod shows the list
-// but plays nothing offline.
+// The rule: offline accounts can only be used while the game was started with a Microsoft
+// session (the launcher only hands one over for an account that owns Minecraft: Java Edition).
+// Without that session the mod shows the list but plays nothing offline.
 //
-// No inner attributes, `//!` comments or external `mod` here: horizon-mixins
-// payloads must be self-contained.
+// No inner attributes, `//!` comments or external `mod` here: a support module's items are
+// copied as they are.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,12 +26,6 @@ pub const SERVER_MARKER: &str = "horizon-switcher-server.txt";
 pub const DEFAULT_SERVER_NAME: &str = "KiwiMC";
 pub const DEFAULT_SERVER_ADDRESS: &str = "kiwimc.pl";
 pub const MAX_NAME: usize = 16;
-
-/// Options > Mods' row.
-pub const ID: &str = "horizon_switcher";
-pub const NAME: &str = "Horizon Switcher";
-pub const VERSION: &str = "0.1.1";
-pub const DESCRIPTION: &str = "Offline accounts beside your Microsoft account: the Account button on the title and multiplayer screens.";
 
 // ---------------------------------------------------------------------------
 // Accounts
@@ -119,13 +113,13 @@ impl Store {
 // The overlay (pure: layout, drawing commands and input)
 // ---------------------------------------------------------------------------
 
-/// What to draw, in GUI pixels: the hook turns these into `native_fill` and
-/// `native_text` calls.
+/// What to draw, in GUI pixels: the helper turns these into `native_fill` and
+/// `native_text` calls (both ARGB).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Draw {
     /// `[x, y, w, h]`, ARGB.
     Fill([f32; 4], u32),
-    /// The text, its top left, RGB, shadow.
+    /// The text, its top left, ARGB, shadow.
     Text(String, [f32; 2], u32, bool),
 }
 
@@ -138,11 +132,12 @@ const ROW_H: f32 = 18.0;
 const PANEL_W: f32 = 240.0;
 const PAD: f32 = 6.0;
 
-const WHITE: u32 = 0xFFFFFF;
-const GREY: u32 = 0xA0A0A0;
-const GREEN: u32 = 0x55FF55;
-const RED: u32 = 0xFF5555;
-const YELLOW: u32 = 0xFFFF55;
+// Text colours are ARGB too: `native_text` draws nothing at alpha 0.
+const WHITE: u32 = 0xFFFFFFFF;
+const GREY: u32 = 0xFFA0A0A0;
+const GREEN: u32 = 0xFF55FF55;
+const RED: u32 = 0xFFFF5555;
+const YELLOW: u32 = 0xFFFFFF55;
 const DIM: u32 = 0xA0000000;
 const PANEL: u32 = 0xF0101018;
 const BUTTON: u32 = 0xFF3A3A44;
@@ -464,7 +459,7 @@ struct State {
     server_checked: bool,
 }
 
-/// Mirrors "an offline account plays": `auth::current()` asks it on every call.
+/// Mirrors "an offline account plays": the session helpers ask it on every join.
 static OFFLINE: AtomicBool = AtomicBool::new(false);
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
@@ -494,10 +489,15 @@ fn accounts_path() -> PathBuf {
     home.join(ACCOUNTS_FILE)
 }
 
-/// The launcher's Microsoft session, read without `current()` (which this mod
-/// hooks). Present only when the launcher started the game for an owner.
+/// The launcher's Microsoft session. `auth::current()` itself is untouched (the
+/// mod patches its callers), so this is the real one. Present only when the
+/// launcher started the game for an owner.
 fn microsoft_name() -> Option<String> {
-    super::CURRENT.get().map(|s| s.name.clone())
+    ::horizon_client_render::auth::current().map(|s| s.name.clone())
+}
+
+fn microsoft_session() -> bool {
+    ::horizon_client_render::auth::current().is_some()
 }
 
 fn save(state: &mut State) {
@@ -515,21 +515,20 @@ fn save(state: &mut State) {
     }
 }
 
-/// For the `auth::current()` hook: true hides the Microsoft session, so every
-/// join, LAN game and single-player world plays offline.
+/// For the session helpers: true hides the Microsoft session, so server joins
+/// and single-player worlds play offline.
 pub fn offline_active() -> bool {
     // The saved choice applies from the first call (a `--server` join at start
-    // asks before the title draws). Nothing in this module calls `current()`
-    // while holding the state's lock, so loading here cannot deadlock.
+    // asks before the title draws).
     if !LOADED.swap(true, Ordering::Relaxed) {
         LazyLock::force(&STATE);
     }
-    OFFLINE.load(Ordering::Relaxed) && super::CURRENT.get().is_some()
+    OFFLINE.load(Ordering::Relaxed) && microsoft_session()
 }
 
 static LOADED: AtomicBool = AtomicBool::new(false);
 
-/// For the `Options::player_name()` hook: the offline name that plays.
+/// For the `Options::player_name()` helper: the offline name that plays.
 pub fn offline_name() -> Option<String> {
     if !offline_active() {
         return None;
@@ -541,7 +540,7 @@ pub fn offline_name() -> Option<String> {
 /// `servers.dat` for the game folder the game runs in (the multiplayer
 /// screen's own rule: beside `saves/`, or the `--player-dir`).
 fn servers_file() -> PathBuf {
-    match crate::logging::player_dir_override() {
+    match ::horizon_client_render::logging::player_dir_override() {
         Some(dir) => dir.join("servers.dat"),
         None => std::env::current_dir().unwrap_or_default().join("servers.dat"),
     }
@@ -556,13 +555,13 @@ pub fn add_default_server_once(servers: &Path) -> std::io::Result<bool> {
     }
     // `load` and `prepend` are the server list's own reader and writer
     // (`ServerList.load`/`save`), present in every Horizon this mod targets.
-    let known = horizon_protocol::servers::load(servers)
+    let known = ::horizon_protocol::servers::load(servers)
         .iter()
         .any(|s| s.ip.eq_ignore_ascii_case(DEFAULT_SERVER_ADDRESS));
     if !known {
         let entry =
-            horizon_protocol::servers::ServerEntry::new(DEFAULT_SERVER_NAME, DEFAULT_SERVER_ADDRESS);
-        horizon_protocol::servers::prepend(servers, &entry)?;
+            ::horizon_protocol::servers::ServerEntry::new(DEFAULT_SERVER_NAME, DEFAULT_SERVER_ADDRESS);
+        ::horizon_protocol::servers::prepend(servers, &entry)?;
     }
     let added = !known;
     std::fs::write(&marker, format!("added {DEFAULT_SERVER_ADDRESS}\n"))?;

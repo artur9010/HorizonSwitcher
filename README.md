@@ -21,7 +21,7 @@ session to the game. Offline accounts work **only while that session is there**.
 the list is shown greyed out with "Start Horizon from the launcher with a Microsoft account". The mod adds offline
 names; it does not get around buying the game.
 
-Offline names only get into **offline-mode** servers (and LAN / single player). Online-mode servers refuse them, as
+Offline names only get into **offline-mode** servers (and single player). Online-mode servers refuse them, as
 they do on Java.
 
 ## Install
@@ -32,18 +32,17 @@ From the launcher: **Mods → Add from GitHub** and paste this repository's URL,
 horizon-launcher mods add-github https://github.com/artur9010/HorizonSwitcher --trust-native-code
 ```
 
-The launcher pins the latest commit (or release), packs `mixins/horizon_switcher/` into a `.hnmod`, and builds a
-modded game for your instance. Native mods run with full access to your computer: read the source first.
+The launcher takes the latest release's `.hmod` (or, without a release, packs the `horizon_switcher/` project from
+the commit) and builds the mod against the prebuilt game of its pinned Horizon. Native mods run with full access
+to your computer: read the source first.
 
-The mod is pinned to one Horizon Nightly (`[compatibility]` in `horizon-mixin.toml`, mirrored in
-`compatibility.json`). A daily workflow moves the pin to each new Nightly that the mod builds on, and releases it. On another
-Horizon the launcher asks before building (**Build anyway**).
+The mod is pinned to one Horizon Nightly (`[native] horizon` in `horizon_switcher/horizon-mod.toml`). A daily
+workflow moves the pin to each new Nightly the mod fits, and releases it.
 
 ### From a file
 
-`python3 tools/package.py` writes `target/horizon_switcher-<version>.hnmod`. Put it in the instance's
-`horizon-native-mods/` folder, next to `options.txt`, and let the launcher build. This is a native mod, so it is
-an `.hnmod`, not an `.hmod`: `.hmod` content mods can't carry code.
+`python3 tools/package.py` writes `target/horizon_switcher-<version>.hmod`. Put it in the instance's
+`horizon-native-mods/` folder, next to `options.txt`, and let the launcher build.
 
 ## Use
 
@@ -60,32 +59,45 @@ The choice is saved and comes back the next time you start the game. Files:
 
 ## How it hooks in
 
-| Injection | Where | What |
-|---|---|---|
-| `[[module]] account_switcher` | `horizon-client-render/src/auth.rs` (pub) | State, account file, overlay layout/input, server-list add |
-| `current` (HEAD, cancellable) | `auth::current` | Returns no session while an offline account plays: joins, LAN, single player, chat signing and Realms all go offline |
-| `player-name` (HEAD, cancellable) | `game::Options::player_name` | The offline name wherever the game names its player (splitscreen guests untouched) |
-| `listed` | named hook `mods` | Row in Options → Mods |
-| `render`, `press`, `release`, `scroll`, `key` | named screen hooks (API 326 title screens) | Draw the button and overlay, take its clicks, wheel and typing |
+`horizon_switcher/` is a flat native mod project: `horizon-mod.toml`, `Cargo.toml` and `src/`. Its crate
+(`src/lib.rs`) subscribes to no hook; the work is done inside the game's own functions by `[[native.mixin]]` rows,
+which the launcher copies out of the pinned source, patches and installs over the prebuilt game:
 
-`switcher.rs` is pure Rust except for `super::CURRENT`, `crate::logging` and `horizon_protocol::servers`, which
-`shim/` stands in for, so its logic has unit tests without the game:
+| Row | Where | What |
+|---|---|---|
+| `[[native.module]] account_switcher` | `crates/horizon-client/src/game.rs` (`src/switcher.rs`) | State, account file, overlay layout/input, server-list add |
+| `join-session` (HEAD, cancellable) | `game::remote::polling::Game::auth_body` | No Microsoft session for server joins and chat signing while an offline account plays (splitscreen guests keep theirs) |
+| `world-session` (MODIFY_EXPRESSION_VALUE) | `auth::current()` in `game::integrated::Game::open_integrated` | Single-player worlds play as the offline name |
+| `player-name` (HEAD, cancellable) | `game::launch_options::Options::player_name` | The offline name wherever the game names its player (splitscreen guests untouched) |
+| `render`, `press`, `release`, `scroll`, `key` (HEAD) | `game::native_hooks::base::Game::native_screen_*` | Draw the button and overlay on the title and multiplayer screens, take its clicks, wheel and typing |
+
+The row in Options → Mods comes from `horizon-mod.toml` itself.
+
+`horizon_client_render::auth::current()` lives below the game crate and can't take a mixin, so the mod patches the
+callers that matter instead. Callers in `horizon_client_lib` can't be patched either: hosting a LAN world, Realms
+and the title's account status still see the Microsoft session while an offline name plays, and so does the
+cosmetics service.
+
+`switcher.rs` is pure Rust except for `horizon_client_render::{auth, logging}` and `horizon_protocol::servers`,
+which `shim/` stands in for, so its logic has unit tests without the game:
 
 ```sh
 cargo test
 ```
 
 `cargo test` covers the logic only (the name rules, saving the list, layout and clicks, key mapping, adding the
-server once). I have not compiled the mod into a full Horizon build. The launcher's build is the real check: it runs
-horizon-mixins and compiles the game with it.
+server once). `python3 tools/verify.py` checks the mod against the SDK release of its pinned commit: every target
+is in that build's function index and patchable, every selector matches, and the helpers take what their rows
+bind. Neither compiles the mod: the launcher's build (`horizon-launcher native-build horizon_switcher`) is the
+real check.
 
 ## Maintenance
 
 | Workflow | When | What |
 |---|---|---|
-| `ci.yml` | push, PR | `cargo test`, clippy, and `tools/verify.sh`: the real horizon-mixins `plan` + `apply` on the pinned Horizon |
-| `bump-horizon.yml` | daily, or by hand (optionally with a commit) | `tools/bump_horizon.py` picks the newest `nightly-source/*` tag and checks every named hook. Hooked functions that only moved are rewritten to their new path. It takes the launcher's horizon-mixins revision and runs `tools/verify.sh --compile`. **If that passes**, it commits the new pin to `master`, raises the patch version (`tools/bump_version.py`), tags `v<version>` and publishes the release. If it fails, `master` is unchanged and an issue is opened. |
-| `release.yml` | tag `v<version>`, or called by the bump | Checks that the tag matches the version, tests, applies and compiles (skipped when the bump already did), then `tools/package.py` and a GitHub release with the `.hnmod` |
+| `ci.yml` | push, PR | `cargo test`, clippy, `tools/verify.py` and `tools/package.py` |
+| `bump-horizon.yml` | daily, or by hand (optionally with a commit) | `tools/bump_horizon.py` picks the newest `nightly-source/*` tag that has an SDK release, and checks the mod against it as `verify.py` does. It also requires every target's signature to be unchanged since the current pin. Targets that only moved are rewritten to their new path, and `[native] mixins` follows the horizon-mixins revision of Horizon's `sdk.json`. **If that passes**, it commits the new pin to `master`, raises the patch version (`tools/bump_version.py`), tags `v<version>` and publishes the release. If it fails, `master` is unchanged and an issue is opened. |
+| `release.yml` | tag `v<version>`, or called by the bump | Checks that the tag matches the version, tests and checks (skipped when the bump already did), then `tools/package.py` and a GitHub release with the `.hmod` |
 
 To release by hand: `python3 tools/bump_version.py` (patch +1, or pass a version), commit, then
 `git tag v<version> && git push origin master --tags`.

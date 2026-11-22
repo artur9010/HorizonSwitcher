@@ -1,4 +1,4 @@
-# Unit tests, lints, and the mod applied to its pinned Horizon with the real horizon-mixins.
+# Unit tests, lints, and the mod checked against the SDK of the Horizon commit it pins.
 name: CI
 
 on:
@@ -20,13 +20,11 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
 
-  apply:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: target/verify/horizon-mixins/target
-          key: mixins-${{ hashFiles('compatibility.json') }}
-      - name: Apply to the pinned Horizon (plan + apply)
-        run: tools/verify.sh
+      - name: Check against the pinned Horizon's SDK
+        run: python3 tools/verify.py
+      - name: Package
+        run: python3 tools/package.py

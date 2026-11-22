@@ -1,0 +1,13 @@
+# The mod's crate. The launcher compiles it against the pinned game (`[native]` in
+# horizon-mod.toml); the switcher itself is the support module src/switcher.rs and the mixin
+# helpers in src/mixins/, which the launcher compiles into the game's patch crate.
+[package]
+name = "horizon-switcher"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .horizon/sdk/ by `cargo horizon-mod` (the launcher
+# builds against its own copy of the same build).
+horizon-mod-api = { path = ".horizon/sdk/api/crates/horizon-mod-api" }

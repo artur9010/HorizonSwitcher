@@ -1,0 +1,116 @@
+id = "horizon_switcher"
+name = "Horizon Switcher"
+version = "0.2.0"
+description = "Offline accounts beside your Microsoft account: the Account button on the title and multiplayer screens."
+authors = ["Artur Motyka"]
+homepage = "https://github.com/artur9010/HorizonSwitcher"
+issues = "https://github.com/artur9010/HorizonSwitcher/issues"
+# Horizon Switcher: offline accounts for Horizon, an in-game account switcher in the spirit of
+# Java's In-Game Account Switcher. The game must still be started by the Horizon launcher with a
+# Microsoft account that owns Minecraft: Java Edition; offline accounts only work while that
+# session is there.
+api = "0.2"
+side = "client"
+capabilities = ["registries"]
+
+# Horizon Nightly 2026-11-22 (tag nightly-source/2026-11-22-2b77287). `mixins` is the
+# horizon-mixins revision that Horizon's own build pins (sdk.json). tools/bump_horizon.py moves both.
+[native]
+game = "26.3"
+horizon = "2b77287de099c9316278ba7ac4d83590fdb7ef30"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"
+
+# The state, the overlay and the account file, beside the game's own module; the helpers below
+# call it as `crate::game::account_switcher`.
+[[native.module]]
+id = "runtime"
+file = "crates/horizon-client/src/game.rs"
+name = "account_switcher"
+source = "src/switcher.rs"
+
+# No Microsoft session for server joins (and chat signing) while an offline account plays.
+# Splitscreen guests keep their own.
+[[native.mixin]]
+id = "join-session"
+target = "horizon_client::game::remote::polling::Game<'_>::auth_body"
+kind = "HEAD"
+cancellable = true
+helper = "src/mixins/join_session.rs"
+bindings = [{ name = "game", ty = "&Game<'_>", value = "self" }]
+
+# No Microsoft session for single player either: the world's player is the offline name.
+[[native.mixin]]
+id = "world-session"
+target = "horizon_client::game::integrated::Game<'_>::open_integrated"
+kind = "MODIFY_EXPRESSION_VALUE"
+selector = "horizon_client::auth::current()"
+require = 1
+helper = "src/mixins/world_session.rs"
+bindings = [
+  { name = "session", ty = "Option<::std::sync::Arc<horizon_client::auth::AuthSession>>", value = "$value" },
+]
+
+# The offline name everywhere the game names its player.
+[[native.mixin]]
+id = "player-name"
+target = "horizon_client::game::launch_options::Options::player_name"
+kind = "HEAD"
+cancellable = true
+helper = "src/mixins/player_name.rs"
+bindings = [{ name = "options", ty = "&Options", value = "self" }]
+
+# The account button and the overlay on the title and multiplayer screens.
+[[native.mixin]]
+id = "render"
+target = "horizon_client::game::native_hooks::base::Game<'_>::native_screen_render_post"
+kind = "HEAD"
+helper = "src/mixins/render.rs"
+bindings = [
+  { name = "game", ty = "&Game<'_>", value = "self" },
+  { name = "batch", ty = "&mut HudBatch", value = "&mut *draw" },
+  { name = "screen", ty = "&ScreenView<'_>", value = "screen" },
+]
+
+[[native.mixin]]
+id = "press"
+target = "horizon_client::game::native_hooks::base::Game<'_>::native_screen_mouse_button_pressed_pre"
+kind = "HEAD"
+helper = "src/mixins/press.rs"
+bindings = [
+  { name = "screen", ty = "&ScreenView<'_>", value = "screen" },
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[native.mixin]]
+id = "release"
+target = "horizon_client::game::native_hooks::base::Game<'_>::native_screen_mouse_button_released_pre"
+kind = "HEAD"
+helper = "src/mixins/release.rs"
+bindings = [
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[native.mixin]]
+id = "scroll"
+target = "horizon_client::game::native_hooks::base::Game<'_>::native_screen_mouse_scrolled_pre"
+kind = "HEAD"
+helper = "src/mixins/scroll.rs"
+bindings = [
+  { name = "screen", ty = "&ScreenView<'_>", value = "screen" },
+  { name = "scroll", ty = "[f64; 2]", value = "scroll" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[native.mixin]]
+id = "key"
+target = "horizon_client::game::native_hooks::base::Game<'_>::native_screen_key_pressed_pre"
+kind = "HEAD"
+helper = "src/mixins/key.rs"
+bindings = [
+  { name = "screen", ty = "&ScreenView<'_>", value = "screen" },
+  { name = "key", ty = "&str", value = "key" },
+  { name = "modifiers", ty = "u32", value = "modifiers" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]

@@ -1,6 +1,6 @@
-# Push a tag `v<version>` (the version in horizon-mixin.toml, Cargo.toml and switcher.rs), or let
-# bump-horizon.yml call it: tests, applies and compiles on the pinned Horizon, then publishes a release
-# with the .hnmod, which "Add from GitHub" and `mods update-github` install.
+# Push a tag `v<version>` (the version in horizon_switcher/horizon-mod.toml and its Cargo.toml), or
+# let bump-horizon.yml call it: tests and checks the mod against its pinned Horizon, then publishes a
+# release with the .hmod, which "Add from GitHub" and `mods update-github` install.
 name: Release
 
 on:
@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       verified:
-        description: "The caller already applied and compiled this commit"
+        description: "The caller already tested and checked this commit"
         required: false
         type: boolean
         default: false
@@ -23,7 +23,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
@@ -33,23 +33,16 @@ jobs:
 
       - name: The tag is the mod's version
         run: |
-          version=$(python3 -c 'import tomllib; print(tomllib.load(open("mixins/horizon_switcher/horizon-mixin.toml","rb"))["mod"]["version"])')
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("horizon_switcher/horizon-mod.toml","rb"))["version"])')
           if [ "v$version" != "$TAG" ]; then
-            echo "Tag $TAG, but horizon-mixin.toml says $version" >&2; exit 1
+            echo "Tag $TAG, but horizon-mod.toml says $version" >&2; exit 1
           fi
 
-      - name: System libraries for the game
-        if: ${{ !inputs.verified }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev \
-            libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libfontconfig-dev libvulkan-dev pkg-config
-
-      - name: Test, apply and compile
+      - name: Test and check
         if: ${{ !inputs.verified }}
         run: |
           cargo test --locked
-          tools/verify.sh --compile
+          python3 tools/verify.py
 
       - name: Package
         id: package
@@ -62,8 +55,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          horizon=$(python3 -c 'import json; print(json.load(open("compatibility.json"))["horizon_revision"])')
-          notes=$(printf 'Built for Horizon `%s`.\n\nInstall: Mods → Add from GitHub → `%s/%s`, or put the `.hnmod` in your instance'"'"'s `horizon-native-mods/`.\n\nSHA-256: `%s`\n' \
+          horizon=$(python3 -c 'import tomllib; print(tomllib.load(open("horizon_switcher/horizon-mod.toml","rb"))["native"]["horizon"])')
+          notes=$(printf 'Built for Horizon `%s`.\n\nInstall: Mods → Add from GitHub → `%s/%s`, or put the `.hmod` in your instance'"'"'s `horizon-native-mods/`.\n\nSHA-256: `%s`\n' \
             "$horizon" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "${{ steps.package.outputs.sha256 }}")
           gh release create "$TAG" "${{ steps.package.outputs.file }}" \
             --title "Horizon Switcher $TAG" --notes "$notes"

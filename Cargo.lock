@@ -3,8 +3,8 @@
 version = 4
 
 [[package]]
-name = "horizon-switcher"
-version = "0.1.1"
+name = "horizon-switcher-tests"
+version = "0.0.0"
 dependencies = [
  "log",
  "serde_json",

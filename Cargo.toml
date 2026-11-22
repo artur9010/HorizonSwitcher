@@ -1,8 +1,9 @@
-# Standalone build of the mod's runtime for its unit tests. The game itself is
-# built by the Horizon launcher (`horizon-launcher native-build`), not by this.
+# Unit tests for the switcher's logic, without the game: `shim/` stands in for the parts of
+# Horizon that horizon_switcher/src/switcher.rs uses. The mod itself is horizon_switcher/, which
+# the Horizon launcher builds; this crate is not part of it.
 [package]
-name = "horizon-switcher"
-version = "0.1.1"
+name = "horizon-switcher-tests"
+version = "0.0.0"
 edition = "2024"
 publish = false
 

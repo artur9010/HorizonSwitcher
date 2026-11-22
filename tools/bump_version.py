@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 """Raises the mod's patch version everywhere it is written, and prints the new one.
 
-    python3 tools/bump_version.py            0.1.0 -> 0.1.1
-    python3 tools/bump_version.py 0.2.0      sets it
+    python3 tools/bump_version.py            0.2.0 -> 0.2.1
+    python3 tools/bump_version.py 0.3.0      sets it
 
-horizon-mixin.toml ([mod] version), Cargo.toml and Cargo.lock (the package), and switcher.rs (VERSION,
-shown in Options > Mods) must agree: tools/package.py and the release refuse otherwise.
+horizon-mod.toml (the version the launcher and Options > Mods show) and the mod crate's
+Cargo.toml must agree: tools/package.py and the release refuse otherwise.
 """
 import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+MOD = Path(__file__).resolve().parents[1] / 'horizon_switcher'
 FILES = {
-    ROOT / 'mixins/horizon_switcher/horizon-mixin.toml': r'(?m)^(version = ")([^"]+)(")',
-    ROOT / 'Cargo.toml': r'(?m)^(version = ")([^"]+)(")',
-    ROOT / 'Cargo.lock': r'(name = "horizon-switcher"\nversion = ")([^"]+)(")',
-    ROOT / 'mixins/horizon_switcher/switcher.rs': r'(pub const VERSION: &str = ")([^"]+)(")',
+    MOD / 'horizon-mod.toml': r'(?m)^(version = ")([^"]+)(")',
+    MOD / 'Cargo.toml': r'(?m)^(version = ")([^"]+)(")',
 }
 
 
