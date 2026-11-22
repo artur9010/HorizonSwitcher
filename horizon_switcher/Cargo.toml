@@ -3,7 +3,7 @@
 # helpers in src/mixins/, which the launcher compiles into the game's patch crate.
 [package]
 name = "horizon-switcher"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 publish = false
 
